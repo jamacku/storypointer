@@ -1,7 +1,19 @@
 import { Version2Client } from 'jira.js';
 
 import { raise } from './util';
-import { Priority, Size } from './schema/jira';
+import {
+  defaultIssueStatusSchema,
+  defaultIssueTypeSchema,
+  defaultPrioritySchema,
+  IssueStatus,
+  issueStatusSchema,
+  IssueType,
+  issueTypeSchema,
+  Priority,
+  prioritySchema,
+  Size,
+} from './schema/jira';
+import { z } from 'zod';
 
 export class Jira {
   readonly api: Version2Client;
@@ -11,6 +23,12 @@ export class Jira {
   };
   readonly baseJQL =
     'project = RHEL AND ("Story Points" is EMPTY OR priority is EMPTY) AND status != Closed';
+
+  translations: {
+    priority: Priority[];
+    type: IssueType[];
+    status: IssueStatus[];
+  } = {};
   JQL = '';
 
   constructor(
@@ -28,6 +46,39 @@ export class Jira {
   async getVersion(): Promise<string> {
     const response = await this.api.serverInfo.getServerInfo();
     return response.version ?? raise('Jira.getVersion(): missing version.');
+  }
+
+  async getTransitions(issue: string): Promise<IssueStatus[]> {
+    const response = await this.api.issues.getTransitions({
+      issueIdOrKey: issue,
+    });
+
+    const parsedTransitions = z
+      .array(issueStatusSchema)
+      .safeParse(response.transitions);
+    return parsedTransitions.success
+      ? parsedTransitions.data
+      : defaultIssueStatusSchema;
+  }
+
+  async getIssueMetadata(issue: string) {
+    const response = await this.api.issues.getEditIssueMeta({
+      issueIdOrKey: issue,
+    });
+
+    const storyPoints = response.fields?.[this.fields.storyPoints];
+    const priority = response.fields?.[this.fields.priority];
+
+    console.log(storyPoints);
+    console.log(priority);
+  }
+
+  async getTranslations(issue: string) {
+    this.translations = {
+      priority: defaultPrioritySchema,
+      status: await this.getTransitions(issue),
+      type: defaultIssueTypeSchema,
+    };
   }
 
   async getIssuesByID(issues: string[]) {
@@ -55,6 +106,12 @@ export class Jira {
     assignee: string | undefined,
     developer: string | undefined
   ) {
+    console.log(
+      await this.api.issues.getTransitions({
+        issueIdOrKey: 'RHEL-35732',
+      })
+    );
+
     const componentQuery = component ? `AND component = ${component}` : '';
     const assigneeQuery = assignee ? `AND assignee = "${assignee}"` : '';
     const developerQuery = developer ? `AND developer = "${developer}"` : '';

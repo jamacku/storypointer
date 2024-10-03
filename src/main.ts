@@ -167,7 +167,7 @@ const cli = async () => {
     );
     let priority = parsedPriority.success ? parsedPriority.data : undefined;
     if (!priority) {
-      const answer: PriorityWithControls = await select({
+      const answer = await select({
         message: 'Priority',
         choices: [
           {
